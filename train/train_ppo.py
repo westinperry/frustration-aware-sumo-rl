@@ -17,7 +17,7 @@ env = DummyVecEnv([lambda: SingleAgentCrosswalkEnv(
     net_file=SUMO_NET,
     route_file=SUMO_ROUTE,
     sumo_binary="sumo",   # or "sumo-gui" to visualize
-    use_gui=False, # or True
+    use_gui=True, # or True
     max_steps=1000
 )])
 
@@ -35,7 +35,7 @@ model = PPO(
 
 # Train
 callback = RewardLoggingCallback(log_dir="logs/ppo_crosswalk/")
-model.learn(total_timesteps=10000, callback=callback)
+model.learn(total_timesteps=1000, callback=callback)
 
 
 # Save

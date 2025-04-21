@@ -1,5 +1,3 @@
-# route_generator.py
-
 import os
 import random
 import numpy as np
@@ -23,10 +21,9 @@ def generate_routefile(output_path,
         '  <personType id="pedestrian" vClass="pedestrian" speed="1.0"/>',
     ]
 
-    # Collect (depart_time, xml_block)
     trips = []
 
-    # VEHICLES: map incoming edges to allowed outgoing edges (no U-turns)
+    # VEHICLES: map incoming edges to allowed outgoing edges
     valid_routes = {
         "N2TL": ["TL2E", "TL2S", "TL2W"],
         "E2TL": ["TL2N", "TL2S", "TL2W"],
@@ -34,6 +31,7 @@ def generate_routefile(output_path,
         "W2TL": ["TL2N", "TL2E", "TL2S"],
     }
 
+    # Generate vehicle trips
     for vidx, (incoming, outgoings) in enumerate(valid_routes.items()):
         for t in range(max_steps):
             if random.random() < veh_rate:
@@ -45,21 +43,22 @@ def generate_routefile(output_path,
                 ]
                 trips.append((t, block))
 
-    # PEDESTRIANS
+    # PEDESTRIANS: spawn on sidewalk walking areas, cross, and exit onto opposite sidewalk
     ped_crossings = [
-        (":TL_w0", ":TL_w1", [":TL_c0"]),  # N→S
-        (":TL_w2", ":TL_w3", [":TL_c1"]),  # E→W
-        (":TL_w4", ":TL_w5", [":TL_c2"]),  # S→N
-        (":TL_w6", ":TL_w7", [":TL_c3"]),  # W→E
+        # (start_walk, approach_edge, cross_edge, inside_walk, exit_edge, end_walk)
+        (":DN_w0", "N2TL", ":TL_c0", ":TL_w0", "TL2S", ":DS_w0"),  # North→South
+        (":DE_w0", "E2TL", ":TL_c1", ":TL_w1", "TL2W", ":DW_w0"),  # East→West
+        (":DS_w0", "S2TL", ":TL_c2", ":TL_w2", "TL2N", ":DN_w0"),  # South→North
+        (":DW_w0", "W2TL", ":TL_c3", ":TL_w3", "TL2E", ":DE_w0"),  # West→East
     ]
-    for pidx, (_from, _to, path) in enumerate(ped_crossings):
+
+    # Generate pedestrian trips
+    for pidx, path in enumerate(ped_crossings):
         edges_str = " ".join(path)
-        if not edges_str:
-            continue
         for t in range(max_steps):
             if random.random() < ped_rate:
                 block = [
-                    f'  <person id="ped_{pidx}_{t}" personType="pedestrian" depart="{t}">',
+                    f'  <person id="ped_{pidx}_{t}" personType="pedestrian" depart="{t}" departPos="random">',
                     f'    <walk edges="{edges_str}"/>',
                     "  </person>",
                 ]
@@ -68,7 +67,7 @@ def generate_routefile(output_path,
     # Sort by depart time
     trips.sort(key=lambda x: x[0])
 
-    # Write out
+    # Write to file
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w") as f:
         for line in header:
