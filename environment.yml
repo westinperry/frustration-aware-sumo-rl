@@ -1,0 +1,17 @@
+name: crosswalk_rl_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - scipy
+  - gymnasium
+  - matplotlib
+  - tensorboard
+  - sumo
+  - pip:
+      - stable-baselines3
+      - sumolib
+      - traci
