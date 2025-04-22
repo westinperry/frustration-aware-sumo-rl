@@ -3,42 +3,41 @@ import numpy as np
 import traci
 
 class SingleAgentCrosswalkEnv(gym.Env):
-    def __init__(
-                 self,
-                 net_file, route_file,
+    def __init__(self, net_file, route_file,
                  sumo_binary="sumo", use_gui=False,
-                 max_steps=1000,
-                 alpha: float = 0.05,
-                 gamma: float = 1.0):
+                 max_steps=1000, alpha=0.05, gamma=0.5):
         super().__init__()
         self.sumo_binary = sumo_binary
-        self.use_gui     = use_gui
-        self.max_steps   = max_steps
-        self.step_count  = 0
+        self.use_gui = use_gui
+        self.max_steps = max_steps
+        self.step_count = 0
 
-        self.net_file   = net_file
+        self.net_file = net_file
         self.route_file = route_file
-        self.sumo_cmd   = [
+        self.sumo_cmd = [
             self.sumo_binary,
             "-n", self.net_file,
             "-r", self.route_file,
-            "--start"
+            "--start",
+            "--error-log", "sumo_crash.log",
+            "--message-log", "sumo_messages.log",
+            "--time-to-teleport", "10000",
+            "--no-step-log"
         ]
 
-        # Define mapping for agent actions to SUMO phases:
-        # - action 0 → phase 0 (traffic green + pedestrian walk at crosswalk 0)
-        # - action 1 → phase 4 (traffic green + pedestrian walk at crosswalk 1)
-        # - action 2 → phase 3 (all-crosswalk green)
-        # - action 3 → phase 7 (all-red clearance)
-        self.phase_map = {
+        self.agent_action_map = {
             0: 0,
-            1: 4,
-            2: 3,
+            1: 3,
+            2: 4,
             3: 7
         }
-        self.action_space = gym.spaces.Discrete(len(self.phase_map))
 
-        # Observation: 4 crosswalks (num_wait, max_wait each) + 4 vehicle counts = 12 dims
+        self.transition_after = {
+            0: [1, 2],
+            2: [5, 6],
+        }
+
+        self.action_space = gym.spaces.Discrete(len(self.agent_action_map))
         self.observation_space = gym.spaces.Box(low=0, high=100, shape=(12,), dtype=np.float32)
 
         self.crosswalk_ids = [":TL_c0", ":TL_c1", ":TL_c2", ":TL_c3"]
@@ -46,40 +45,42 @@ class SingleAgentCrosswalkEnv(gym.Env):
 
         self.alpha = alpha
         self.gamma = gamma
+        self.last_agent_phase = None
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
         if traci.isLoaded():
             traci.close()
         self.step_count = 0
+        self.last_agent_phase = None
         traci.start(self.sumo_cmd)
         return self._get_observation(), {}
 
     def step(self, action):
-        # Handle numpy array or list inputs
         if isinstance(action, (np.ndarray, list, tuple)):
             action = int(np.array(action).item())
         assert self.action_space.contains(action), f"Invalid Action: {action}"
 
-        # Map to actual SUMO phase index and set it
-        phase_id = self.phase_map[action]
-        traci.trafficlight.setPhase("TL", phase_id)
+        mapped_phase = self.agent_action_map[action]
 
-        # Wait out the full phase duration before returning control
+        if self.last_agent_phase in self.transition_after:
+            for phase in self.transition_after[self.last_agent_phase]:
+                self._set_phase_and_step(phase)
+
+        self._set_phase_and_step(mapped_phase)
+        self.last_agent_phase = action
+
+        obs = self._get_observation()
+        reward = self._compute_reward()
+        done = self._check_termination()
+        return obs, reward, done, False, {}
+
+    def _set_phase_and_step(self, phase_id):
+        traci.trafficlight.setPhase("TL", phase_id)
         duration = traci.trafficlight.getPhaseDuration("TL")
         for _ in range(int(duration)):
             traci.simulationStep()
             self.step_count += 1
-
-        # Get next observation and compute reward
-        obs    = self._get_observation()
-        reward = self._compute_reward()
-        done   = self.step_count >= self.max_steps
-        return obs, reward, done, False, {}
-
-    def close(self):
-        if traci.isLoaded():
-            traci.close()
 
     def _get_observation(self):
         obs = []
@@ -107,3 +108,7 @@ class SingleAgentCrosswalkEnv(gym.Env):
 
     def _check_termination(self):
         return self.step_count >= self.max_steps
+
+    def close(self):
+        if traci.isLoaded():
+            traci.close()

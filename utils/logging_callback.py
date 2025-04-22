@@ -9,19 +9,19 @@ class RewardLoggingCallback(BaseCallback):
         self.log_dir = log_dir
         os.makedirs(self.log_dir, exist_ok=True)
         self.episode_rewards = []
-        self.current_ep_reward = 0.0
 
     def _on_step(self) -> bool:
-        self.current_ep_reward += self.locals["rewards"][0]  # for single env
+        infos = self.locals.get("infos", [])
+        for info in infos:
+            if "episode" in info:
+                ep_rew = info["episode"]["r"]
+                self.episode_rewards.append(ep_rew)
+                self.logger.record("rollout/ep_rew_mean", ep_rew)
         return True
-
-    def _on_rollout_end(self):
-        self.episode_rewards.append(self.current_ep_reward)
-        self.logger.record("rollout/ep_rew_mean", self.current_ep_reward)
-        self.current_ep_reward = 0.0
 
     def _on_training_end(self) -> None:
         path = os.path.join(self.log_dir, "episode_rewards.txt")
         np.savetxt(path, self.episode_rewards, fmt="%.4f")
         if self.verbose:
             print(f"[LoggingCallback] Saved episode rewards to {path}")
+

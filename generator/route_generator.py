@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import random
 import numpy as np
@@ -14,11 +15,11 @@ def generate_routefile(output_path,
     veh_rate = vehs_per_hour / 3600.0
     ped_rate = peds_per_hour / 3600.0
 
-    # Header
+    # Header with CALM pedestrians
     header = [
         "<routes>",
         '  <vType id="car" accel="1.0" decel="4.5" maxSpeed="25" length="5"/>',
-        '  <personType id="pedestrian" vClass="pedestrian" speed="1.0"/>',
+        '  <personType id="pedestrian" vClass="pedestrian" speed="1.0" impatience="0.0" jmCrossingGap="10.0" jmTimeGap="999"/>',
     ]
 
     trips = []
@@ -43,14 +44,16 @@ def generate_routefile(output_path,
                 ]
                 trips.append((t, block))
 
-    # PEDESTRIANS: spawn on sidewalk walking areas, cross, and exit onto opposite sidewalk
-    ped_crossings = [
-        # (start_walk, approach_edge, cross_edge, inside_walk, exit_edge, end_walk)
-        (":DN_w0", "N2TL", ":TL_c0", ":TL_w0", "TL2S", ":DS_w0"),  # North→South
-        (":DE_w0", "E2TL", ":TL_c1", ":TL_w1", "TL2W", ":DW_w0"),  # East→West
-        (":DS_w0", "S2TL", ":TL_c2", ":TL_w2", "TL2N", ":DN_w0"),  # South→North
-        (":DW_w0", "W2TL", ":TL_c3", ":TL_w3", "TL2E", ":DE_w0"),  # West→East
-    ]
+    # --- PEDESTRIAN ROUTES TO UNCOMMENT AND TEST ONE BY ONE ---
+    ped_crossings = []
+    # North to South (single crossing)
+    ped_crossings.append((":DN_w0", "N2TL", ":TL_w0", ":TL_c0", ":TL_w1", "TL2E"))
+    # East to West (single crossing)
+    ped_crossings.append((":DE_w0", "E2TL", ":TL_w1", ":TL_c1", ":TL_w2", "TL2S"))
+    # South to North (single crossing)
+    ped_crossings.append((":DS_w0", "S2TL", ":TL_w2", ":TL_c2", ":TL_w3", "TL2W"))
+    # West to East (single crossing)
+    ped_crossings.append((":DW_w0", "W2TL", ":TL_w3", ":TL_c3", ":TL_w0", "TL2N"))
 
     # Generate pedestrian trips
     for pidx, path in enumerate(ped_crossings):
@@ -58,7 +61,7 @@ def generate_routefile(output_path,
         for t in range(max_steps):
             if random.random() < ped_rate:
                 block = [
-                    f'  <person id="ped_{pidx}_{t}" personType="pedestrian" depart="{t}" departPos="random">',
+                    f'  <person id="ped_{pidx}_{t}" personType="pedestrian" depart="{t}" departPos="0">',
                     f'    <walk edges="{edges_str}"/>',
                     "  </person>",
                 ]
