@@ -1,0 +1,6 @@
+metric,value
+mean_reward,-4495.0
+std_reward,0.0
+unique_peds,83
+unique_vehs,167
+total_actions,30

@@ -12,6 +12,6 @@ dependencies:
   - tensorboard
   - sumo
   - pip:
-      - stable-baselines3
+      - "stable-baselines3[extra]"
       - sumolib
       - traci

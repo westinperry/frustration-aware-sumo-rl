@@ -1,61 +1,86 @@
 #!/usr/bin/env python3
-import os
-import sys
-import traceback
+import os, sys, traceback
+
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.env_checker import check_env
+from gymnasium.wrappers import TimeLimit
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from env.single_agent_crosswalk_env import SingleAgentCrosswalkEnv
 from utils.logging_callback import RewardLoggingCallback
 
-SUMO_NET = "intersection/environment.net.xml"
+# Paths
+SUMO_NET   = "intersection/environment.net.xml"
 SUMO_ROUTE = "intersection/episode_routes.rou.xml"
-CRASH_LOG = "logs/ppo_crosswalk_crash.log"
+LOG_ROOT   = "logs/ablation_crosswalk/"
+MODEL_ROOT = "models/"
 
-# Make sure logs dir exists
-os.makedirs("logs", exist_ok=True)
+# Ensure log dirs exist
+os.makedirs(LOG_ROOT, exist_ok=True)
+os.makedirs(MODEL_ROOT, exist_ok=True)
 
-# ---- START LOG FILE ----
-with open(CRASH_LOG, "w") as f:
-    f.write("🚦 SUMO RL Training Log Start\n\n")
+# Parameter grid
+alpha_values = [0.01, 0.05]
+gamma_values = [.1]
+ped_weights  = [.35, .4]
 
-def log_exception(msg, exc):
-    with open(CRASH_LOG, "a") as f:
-        f.write(f"\n❌ {msg}\n")
-        traceback.print_exc(file=f)
+exp_id = 0
+for alpha in alpha_values:
+    for gamma in gamma_values:
+        for ped_w in ped_weights:
+            veh_w = 1.0 - ped_w
+            exp_name = f"exp_{exp_id}_a{alpha}_g{gamma}_pw{ped_w}_vw{veh_w}"
+            log_dir = os.path.join(LOG_ROOT, exp_name)
+            model_path = os.path.join(MODEL_ROOT, f"{exp_name}.zip")
+            crash_log = os.path.join(log_dir, "crash.log")
 
-try:
-    # Wrap environment init too
-    env = DummyVecEnv([
-        lambda: Monitor(SingleAgentCrosswalkEnv(
-            net_file=SUMO_NET,
-            route_file=SUMO_ROUTE,
-            sumo_binary="sumo",
-            use_gui=True,
-            max_steps=1000
-        ))
-    ])
+            os.makedirs(log_dir, exist_ok=True)
+            with open(crash_log, "w") as f:
+                f.write(f"🚦 SUMO RL Log Start for {exp_name}\n\n")
 
-    # Sanity check
-    check_env(env.envs[0], warn=True)
+            def log_exception(msg, exc):
+                with open(crash_log, "a") as f:
+                    f.write(f"\n❌ {msg}\n")
+                    traceback.print_exc(file=f)
 
-    model = PPO(
-        policy="MlpPolicy",
-        env=env,
-        verbose=1,
-        tensorboard_log="logs/ppo_crosswalk/",
-        device="cpu"
-    )
+            try:
+                def make_env():
+                    env = SingleAgentCrosswalkEnv(
+                        net_file=SUMO_NET,
+                        route_file=SUMO_ROUTE,
+                        sumo_binary="sumo",
+                        use_gui=False,
+                        max_steps=1000,
+                        alpha=alpha,
+                        gamma=gamma,
+                        ped_weight=ped_w,
+                        veh_weight=veh_w
+                    )
+                    return Monitor(TimeLimit(env, max_episode_steps=1000),
+                                   filename=os.path.join(log_dir, "monitor.csv"))
 
-    callback = RewardLoggingCallback(log_dir="logs/ppo_crosswalk/")
-    model.learn(total_timesteps=1000, callback=callback)
+                env = DummyVecEnv([make_env])
+                model = PPO(
+                    policy="MlpPolicy",
+                    env=env,
+                    verbose=0,
+                    device="cpu",
+                    tensorboard_log=log_dir,
+                    n_steps=1000,
+                    batch_size=250,
+                    learning_rate=1e-4,
+                    gamma=0.99
+                )
 
-    os.makedirs("models", exist_ok=True)
-    model.save("models/ppo_crosswalk")
+                callback = RewardLoggingCallback(log_dir=log_dir)
+                model.learn(total_timesteps=10_000, callback=callback, progress_bar=True)
+                model.save(model_path)
+                print(f"✅ Finished {exp_name}")
 
-except Exception as e:
-    log_exception("Training failed", e)
-    raise
+            except Exception as e:
+                log_exception("Training failed", e)
+                print(f"❌ Failed {exp_name}")
+
+            exp_id += 1

@@ -1,0 +1,8 @@
+model,mean_reward
+exp_0_a0.01_g0.1_pw0.35_vw0.65.zip,-520457.0
+exp_1_a0.01_g0.1_pw0.4_vw0.6.zip,-206576.5
+exp_2_a0.05_g0.1_pw0.35_vw0.65.zip,-788349.0
+exp_3_a0.05_g0.1_pw0.4_vw0.6.zip,-1367504.5
+frl_baseline.zip,-2868.0
+rl_baseline.zip,-2797.5
+static_baseline.zip,-141445.5
